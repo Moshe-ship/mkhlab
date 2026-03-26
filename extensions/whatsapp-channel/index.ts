@@ -1,214 +1,232 @@
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
+import type { WhatsAppWebhookPayload, WhatsAppAccount } from "./src/types.js";
+import { sendText, sendMedia } from "./src/outbound.js";
+import {
+  detectIntent,
+  getHelpMessage,
+  getGreetingMessage,
+} from "./src/router.js";
 
 /**
- * مخلب WhatsApp Channel
+ * مخلب WhatsApp Channel Plugin
  *
+ * Implements the OpenClaw ChannelPlugin interface for WhatsApp Cloud API.
  * Scoped service bot (per Meta's Jan 2026 policy):
- * - Prayer times (أوقات الصلاة)
- * - Hijri calendar (التقويم الهجري)
- * - Quran search (بحث القرآن)
- * - Translation (ترجمة)
+ * - Prayer times, Hijri calendar, Quran search, Hadith, Translation
  *
- * NOT a general-purpose AI chatbot (banned on WhatsApp).
+ * NOT a general-purpose AI chatbot.
  */
 
-interface WhatsAppMessage {
-  from: string;
-  id: string;
-  timestamp: string;
-  type: "text" | "image" | "audio" | "document";
-  text?: { body: string };
+let pluginRuntime: unknown = null;
+export function setRuntime(runtime: unknown) {
+  pluginRuntime = runtime;
+}
+export function getRuntime() {
+  return pluginRuntime;
 }
 
-interface WhatsAppWebhookPayload {
-  object: string;
-  entry: Array<{
-    id: string;
-    changes: Array<{
-      value: {
-        messaging_product: string;
-        metadata: { phone_number_id: string };
-        messages?: WhatsAppMessage[];
+const whatsappChannel = {
+  id: "mkhlab-whatsapp",
+
+  meta: {
+    id: "mkhlab-whatsapp",
+    label: "WhatsApp (مخلب)",
+    selectionLabel: "مخلب WhatsApp",
+    docsPath: "channels/mkhlab-whatsapp",
+    blurb:
+      "Arabic AI skills via WhatsApp Business API — prayer times, Hijri calendar, Quran, translation.",
+    aliases: ["wa", "whatsapp", "واتساب", "واتس"],
+    order: 100,
+  },
+
+  capabilities: {
+    chatTypes: ["direct"] as ("direct" | "group")[],
+    media: {
+      maxSizeBytes: 16 * 1024 * 1024, // 16MB
+      supportedTypes: ["image/jpeg", "image/png", "audio/ogg", "audio/mp3"],
+    },
+    supports: {
+      threads: false,
+      reactions: true,
+      edits: false,
+      deletions: false,
+      mentions: false,
+      formatting: true, // WhatsApp supports *bold* _italic_ ~strike~
+      voice: true,
+      video: false,
+    },
+  },
+
+  config: {
+    listAccountIds(cfg: Record<string, unknown>): string[] {
+      const channels = cfg.channels as Record<string, unknown> | undefined;
+      if (!channels) return [];
+      const wa = channels["mkhlab-whatsapp"] as
+        | { accounts?: Record<string, unknown> }
+        | undefined;
+      if (!wa?.accounts) return [];
+      return Object.keys(wa.accounts);
+    },
+
+    resolveAccount(
+      cfg: Record<string, unknown>,
+      accountId = "default"
+    ): WhatsAppAccount {
+      const channels = cfg.channels as Record<string, Record<string, unknown>>;
+      const wa = channels?.["mkhlab-whatsapp"] as {
+        accounts: Record<string, WhatsAppAccount>;
       };
-    }>;
-  }>;
-}
+      return wa.accounts[accountId];
+    },
+  },
 
-// Skill routing: detect intent from Arabic message
-function detectSkill(
-  text: string
-): "prayer" | "hijri" | "quran" | "translate" | "greeting" | "unknown" {
-  const lower = text.toLowerCase();
-  const arabic = text;
+  outbound: {
+    deliveryMode: "direct" as const,
+    textChunkLimit: 4096,
 
-  // Prayer times
-  if (
-    arabic.includes("صلاة") ||
-    arabic.includes("صلاه") ||
-    arabic.includes("أذان") ||
-    arabic.includes("اذان") ||
-    arabic.includes("فجر") ||
-    arabic.includes("ظهر") ||
-    arabic.includes("عصر") ||
-    arabic.includes("مغرب") ||
-    arabic.includes("عشاء") ||
-    lower.includes("prayer") ||
-    lower.includes("salah") ||
-    lower.includes("athan")
-  ) {
-    return "prayer";
-  }
+    async sendText(ctx: {
+      cfg: WhatsAppAccount;
+      to: string;
+      text: string;
+      accountId: string;
+    }) {
+      return sendText(ctx);
+    },
 
-  // Hijri calendar
-  if (
-    arabic.includes("هجري") ||
-    arabic.includes("تاريخ") ||
-    arabic.includes("رمضان") ||
-    arabic.includes("عيد") ||
-    arabic.includes("محرم") ||
-    lower.includes("hijri") ||
-    lower.includes("ramadan")
-  ) {
-    return "hijri";
-  }
+    async sendMedia(ctx: {
+      cfg: WhatsAppAccount;
+      to: string;
+      mediaUrl: string;
+      accountId: string;
+    }) {
+      return sendMedia({ ...ctx, mediaType: "image" });
+    },
+  },
 
-  // Quran
-  if (
-    arabic.includes("قرآن") ||
-    arabic.includes("قران") ||
-    arabic.includes("آية") ||
-    arabic.includes("ايه") ||
-    arabic.includes("سورة") ||
-    arabic.includes("سوره") ||
-    lower.includes("quran") ||
-    lower.includes("surah") ||
-    lower.includes("ayah")
-  ) {
-    return "quran";
-  }
+  gateway: {
+    async start(
+      account: { accountId: string; cfg: WhatsAppAccount },
+      deps: {
+        logger: { info: (msg: string) => void; error: (msg: string) => void };
+        onReady: () => void;
+        onMessage: (msg: {
+          senderId: string;
+          text: string;
+          messageId: string;
+          channelId: string;
+        }) => void;
+        ctx: { abortSignal: AbortSignal };
+      }
+    ) {
+      const { cfg } = account;
+      const { logger, onReady, onMessage, ctx } = deps;
+      const port = cfg.webhookPort || 3001;
 
-  // Greetings
-  if (
-    arabic.includes("السلام عليكم") ||
-    arabic.includes("مرحبا") ||
-    arabic.includes("أهلا") ||
-    arabic.includes("اهلا")
-  ) {
-    return "greeting";
-  }
+      // Dynamic import express to avoid bundling issues
+      const express = (await import("express")).default;
+      const app = express();
+      app.use(express.json());
 
-  // Translation (English text or explicit request)
-  if (
-    arabic.includes("ترجم") ||
-    arabic.includes("ترجمة") ||
-    arabic.includes("translate") ||
-    /^[a-zA-Z\s.,!?]+$/.test(text.trim())
-  ) {
-    return "translate";
-  }
+      // GET — Meta webhook verification
+      app.get("/webhook", (req, res) => {
+        const mode = req.query["hub.mode"];
+        const token = req.query["hub.verify_token"];
+        const challenge = req.query["hub.challenge"];
 
-  return "unknown";
-}
+        if (mode === "subscribe" && token === cfg.verifyToken) {
+          logger.info("Webhook verified");
+          res.status(200).send(challenge);
+        } else {
+          res.sendStatus(403);
+        }
+      });
 
-// Format response for WhatsApp (max 4096 chars)
-function formatForWhatsApp(text: string): string {
-  if (text.length <= 4096) return text;
-  return text.slice(0, 4090) + "\n...";
-}
+      // POST — incoming messages
+      app.post("/webhook", (req, res) => {
+        const payload = req.body as WhatsAppWebhookPayload;
+
+        // Always respond 200 quickly (Meta requires <5s)
+        res.sendStatus(200);
+
+        if (payload.object !== "whatsapp_business_account") return;
+
+        for (const entry of payload.entry) {
+          for (const change of entry.changes) {
+            const messages = change.value.messages;
+            if (!messages) continue;
+
+            for (const msg of messages) {
+              if (msg.type !== "text" || !msg.text) continue;
+
+              const intent = detectIntent(msg.text.body);
+
+              // Handle greeting and help locally (no agent needed)
+              if (intent === "greeting") {
+                sendText({
+                  cfg,
+                  to: msg.from,
+                  text: getGreetingMessage(),
+                });
+                continue;
+              }
+
+              if (intent === "help" || intent === "unknown") {
+                sendText({
+                  cfg,
+                  to: msg.from,
+                  text: getHelpMessage(),
+                });
+                continue;
+              }
+
+              // Route to OpenClaw agent for skill-backed intents
+              onMessage({
+                senderId: msg.from,
+                text: msg.text.body,
+                messageId: msg.id,
+                channelId: "mkhlab-whatsapp",
+              });
+            }
+          }
+        }
+      });
+
+      // Health check
+      app.get("/health", (_req, res) => {
+        res.json({ status: "ok", channel: "مخلب WhatsApp", port });
+      });
+
+      const server = app.listen(port, () => {
+        logger.info(`مخلب WhatsApp webhook listening on port ${port}`);
+        onReady();
+      });
+
+      // CRITICAL: Keep promise pending until abort signal fires
+      // If this resolves early, OpenClaw enters restart loop
+      await new Promise<void>((resolve) => {
+        if (ctx.abortSignal.aborted) {
+          resolve();
+          return;
+        }
+        ctx.abortSignal.addEventListener(
+          "abort",
+          () => {
+            server.close();
+            logger.info("مخلب WhatsApp channel shut down");
+            resolve();
+          },
+          { once: true }
+        );
+      });
+    },
+  },
+};
 
 export default definePluginEntry({
   id: "mkhlab-whatsapp",
   name: "مخلب WhatsApp Channel",
   register(api) {
-    api.registerChannel({
-      id: "whatsapp",
-      name: "WhatsApp",
-      description: "مخلب on WhatsApp — Arabic AI skills via WhatsApp Business API",
-
-      // Webhook verification (GET request from Meta)
-      async handleWebhookVerification(req) {
-        const mode = req.query["hub.mode"];
-        const token = req.query["hub.verify_token"];
-        const challenge = req.query["hub.challenge"];
-
-        if (mode === "subscribe" && token === req.config.verifyToken) {
-          return { status: 200, body: challenge };
-        }
-        return { status: 403, body: "Forbidden" };
-      },
-
-      // Incoming message handler
-      async handleMessage(payload: WhatsAppWebhookPayload, config) {
-        const messages: Array<{
-          senderId: string;
-          text: string;
-          messageId: string;
-        }> = [];
-
-        for (const entry of payload.entry) {
-          for (const change of entry.changes) {
-            if (change.value.messages) {
-              for (const msg of change.value.messages) {
-                if (msg.type === "text" && msg.text) {
-                  messages.push({
-                    senderId: msg.from,
-                    text: msg.text.body,
-                    messageId: msg.id,
-                  });
-                }
-              }
-            }
-          }
-        }
-
-        return messages;
-      },
-
-      // Send reply via WhatsApp Cloud API
-      async sendMessage(to: string, text: string, config) {
-        const url = `https://graph.facebook.com/v21.0/${config.phoneNumberId}/messages`;
-        const body = {
-          messaging_product: "whatsapp",
-          to,
-          type: "text",
-          text: { body: formatForWhatsApp(text) },
-        };
-
-        await fetch(url, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(body),
-        });
-      },
-
-      // Route messages to appropriate skills
-      async routeMessage(text: string) {
-        const skill = detectSkill(text);
-        const scopeMessage =
-          "🦅 أنا مخلب، مساعدك على واتساب!\n\n" +
-          "أقدر أساعدك في:\n" +
-          "🕌 أوقات الصلاة — مثال: «أوقات الصلاة في الرياض»\n" +
-          "📅 التقويم الهجري — مثال: «التاريخ الهجري اليوم»\n" +
-          "📖 بحث القرآن — مثال: «آية الكرسي»\n" +
-          "🔄 ترجمة — مثال: «ترجم Hello World»\n";
-
-        if (skill === "unknown") {
-          return { skill: null, fallbackMessage: scopeMessage };
-        }
-
-        if (skill === "greeting") {
-          return {
-            skill: null,
-            fallbackMessage:
-              "وعليكم السلام ورحمة الله وبركاته! 🦅\n\n" + scopeMessage,
-          };
-        }
-
-        return { skill, query: text };
-      },
-    });
+    setRuntime(api.runtime);
+    api.registerChannel({ plugin: whatsappChannel });
   },
 });

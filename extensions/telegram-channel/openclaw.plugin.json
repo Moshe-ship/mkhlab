@@ -1,0 +1,25 @@
+{
+  "id": "mkhlab-telegram",
+  "name": "مخلب Telegram Channel",
+  "description": "Telegram Bot API channel for مخلب. All 20+ Arabic skills available via Telegram bot.",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "botToken": {
+        "type": "string",
+        "description": "Telegram Bot API token from @BotFather"
+      },
+      "webhookUrl": {
+        "type": "string",
+        "description": "Public URL for webhook (optional, uses polling if not set)"
+      },
+      "allowedUsers": {
+        "type": "array",
+        "items": { "type": "number" },
+        "description": "Telegram user IDs allowed to use the bot (empty = all)"
+      }
+    },
+    "required": ["botToken"]
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "name": "@mkhlab/telegram-channel",
+  "version": "0.1.0",
+  "description": "Telegram Bot channel for مخلب Arabic AI assistant",
+  "type": "module",
+  "main": "index.ts",
+  "openclaw": {
+    "extensions": ["./index.ts"]
+  }
+}
