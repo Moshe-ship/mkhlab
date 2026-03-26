@@ -16,6 +16,10 @@
 
 </div>
 
+<div align="center">
+<img src="docs/demo.gif" alt="مخلب demo" width="700" />
+</div>
+
 ---
 
 ## What is مخلب?
