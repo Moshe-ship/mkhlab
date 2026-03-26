@@ -8,32 +8,32 @@ metadata: {"openclaw": {"emoji": "📜", "requires": {"bins": ["curl"]}}}
 
 ## البحث عن حديث
 
-### بحث بالكلمة (إنجليزي)
+### جلب حديث بالرقم (بدون API key)
 ```bash
-curl -s "https://api.sunnah.com/v1/hadiths?q=KEYWORD&limit=5" -H "x-api-key: SunnnahApiKey123"
-```
+# صحيح البخاري — حديث رقم 1
+curl -s "https://api.hadith.gading.dev/books/bukhari?range=1-1"
 
-### بحث بدون API key (بديل مجاني)
-```bash
-curl -s "https://cdn.jsdelivr.net/gh/fawazahmed0/hadith-api@1/editions.json"
-```
-
-### جلب حديث من كتاب محدد
-```bash
-# صحيح البخاري — كتاب رقم 1، حديث رقم 1
-curl -s "https://cdn.jsdelivr.net/gh/fawazahmed0/hadith-api@1/editions/ara-bukhari/1/1.json"
+# صحيح مسلم — أحاديث 1 إلى 5
+curl -s "https://api.hadith.gading.dev/books/muslim?range=1-5"
 ```
 
 ### الكتب المتاحة
-| الكود | الكتاب |
-|-------|--------|
-| `ara-bukhari` | صحيح البخاري |
-| `ara-muslim` | صحيح مسلم |
-| `ara-tirmidhi` | سنن الترمذي |
-| `ara-abudawud` | سنن أبي داود |
-| `ara-nasai` | سنن النسائي |
-| `ara-ibnmajah` | سنن ابن ماجه |
-| `ara-malik` | موطأ مالك |
+```bash
+# قائمة الكتب
+curl -s "https://api.hadith.gading.dev/books"
+```
+
+| الكود | الكتاب | عدد الأحاديث |
+|-------|--------|-------------|
+| `bukhari` | صحيح البخاري | 6,638 |
+| `muslim` | صحيح مسلم | 4,930 |
+| `tirmidzi` | سنن الترمذي | 3,625 |
+| `abu-daud` | سنن أبي داود | 4,419 |
+| `nasai` | سنن النسائي | 5,364 |
+| `ibnu-majah` | سنن ابن ماجه | 4,285 |
+| `malik` | موطأ مالك | 1,594 |
+| `ahmad` | مسند أحمد | 4,305 |
+| `darimi` | سنن الدارمي | 2,949 |
 
 ## عرض النتيجة
 
