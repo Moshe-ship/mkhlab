@@ -14,6 +14,7 @@
 [![OpenClaw Plugin](https://img.shields.io/badge/OpenClaw-Plugin-blue.svg)](https://github.com/openclaw/openclaw)
 [![Skills](https://img.shields.io/badge/Skills-60-orange.svg)](#skills)
 [![Landing Page](https://img.shields.io/badge/Website-Live-teal.svg)](https://moshe-ship.github.io/mkhlab/)
+[![عربي](https://img.shields.io/badge/README-عربي-red.svg)](README_AR.md)
 
 </div>
 
