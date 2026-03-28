@@ -45,7 +45,7 @@ No other AI assistant offers this combination:
 
 ```bash
 # Clone
-git clone https://github.com/mousaabumazin/mkhlab.git
+git clone https://github.com/Moshe-ship/mkhlab.git
 cd mkhlab
 
 # Tell OpenClaw where to find the skills
